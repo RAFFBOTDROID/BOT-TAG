@@ -241,13 +241,12 @@ async def processar(update: Update, context: ContextTypes.DEFAULT_TYPE):
     except Exception as e:
         logging.error(f"Erro ao editar: {e}")
 
-# ================= MAIN (ULTRA MODE FIXED — ORIGINAL PRESERVADO) =================
+# ================= MAIN (SAFE MODE — LOOP FIX) =================
 import asyncio
 import logging
 import os
 import shutil
 
-RESTART_DELAY = 5
 BACKUP_INTERVAL = 3600
 WATCHDOG_INTERVAL = 120
 
@@ -283,18 +282,10 @@ async def run_bot():
         )
     )
 
-    logging.info("🚀 Channel Beautify PRO ULTRA MODE ONLINE")
-
-    async def runner():
-        while True:
-            try:
-                await app.run_polling()
-            except Exception as e:
-                logging.error(f"🔥 BOT CAIU — Reiniciando em {RESTART_DELAY}s: {e}")
-                await asyncio.sleep(RESTART_DELAY)
+    logging.info("🚀 Channel Beautify PRO ONLINE")
 
     await asyncio.gather(
-        runner(),
+        app.run_polling(),
         watchdog(),
         backup_db()
     )
