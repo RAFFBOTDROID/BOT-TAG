@@ -241,7 +241,7 @@ async def processar(update: Update, context: ContextTypes.DEFAULT_TYPE):
     except Exception as e:
         logging.error(f"Erro ao editar: {e}")
 
-# ================= MAIN (ULTRA MODE FIXED) =================
+# ================= MAIN (ULTRA MODE FIXED — ORIGINAL PRESERVADO) =================
 import asyncio
 import logging
 import os
@@ -267,34 +267,37 @@ async def watchdog():
         await asyncio.sleep(WATCHDOG_INTERVAL)
 
 async def run_bot():
-    while True:
-        try:
-            init_db()
-            app = ApplicationBuilder().token(TOKEN).build()
+    init_db()
 
-            app.add_handler(CommandHandler("start", start))
-            app.add_handler(CallbackQueryHandler(callback))
-            app.add_handler(MessageHandler(filters.TEXT & filters.ChatType.PRIVATE, receber_texto))
-            app.add_handler(
-                MessageHandler(
-                    filters.ChatType.CHANNEL
-                    | filters.ChatType.GROUP
-                    | filters.ChatType.SUPERGROUP,
-                    processar
-                )
-            )
+    app = ApplicationBuilder().token(TOKEN).build()
 
-            logging.info("🚀 Channel Beautify PRO ULTRA MODE ONLINE")
+    app.add_handler(CommandHandler("start", start))
+    app.add_handler(CallbackQueryHandler(callback))
+    app.add_handler(MessageHandler(filters.TEXT & filters.ChatType.PRIVATE, receber_texto))
+    app.add_handler(
+        MessageHandler(
+            filters.ChatType.CHANNEL
+            | filters.ChatType.GROUP
+            | filters.ChatType.SUPERGROUP,
+            processar
+        )
+    )
 
-            await asyncio.gather(
-                app.run_polling(),
-                watchdog(),
-                backup_db()
-            )
+    logging.info("🚀 Channel Beautify PRO ULTRA MODE ONLINE")
 
-        except Exception as e:
-            logging.error(f"🔥 BOT CAIU — Reiniciando em {RESTART_DELAY}s: {e}")
-            await asyncio.sleep(RESTART_DELAY)
+    async def runner():
+        while True:
+            try:
+                await app.run_polling()
+            except Exception as e:
+                logging.error(f"🔥 BOT CAIU — Reiniciando em {RESTART_DELAY}s: {e}")
+                await asyncio.sleep(RESTART_DELAY)
+
+    await asyncio.gather(
+        runner(),
+        watchdog(),
+        backup_db()
+    )
 
 def main():
     try:
@@ -304,3 +307,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
