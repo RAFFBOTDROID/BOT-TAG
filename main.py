@@ -241,17 +241,15 @@ async def processar(update: Update, context: ContextTypes.DEFAULT_TYPE):
     except Exception as e:
         logging.error(f"Erro ao editar: {e}")
 
-# ================= MAIN =================
-# ================= MAIN (ULTRA MODE) =================
+# ================= MAIN (ULTRA MODE FIXED) =================
 import asyncio
 import logging
 import os
 import shutil
-import time
 
 RESTART_DELAY = 5
-BACKUP_INTERVAL = 3600  # 1 hora
-WATCHDOG_INTERVAL = 120  # 2 minutos
+BACKUP_INTERVAL = 3600
+WATCHDOG_INTERVAL = 120
 
 async def backup_db():
     while True:
@@ -295,4 +293,14 @@ async def run_bot():
             )
 
         except Exception as e:
-            logging.error(f"🔥 BOT CAIU — Reiniciand
+            logging.error(f"🔥 BOT CAIU — Reiniciando em {RESTART_DELAY}s: {e}")
+            await asyncio.sleep(RESTART_DELAY)
+
+def main():
+    try:
+        asyncio.run(run_bot())
+    except KeyboardInterrupt:
+        print("⛔ Bot desligado manualmente")
+
+if __name__ == "__main__":
+    main()
