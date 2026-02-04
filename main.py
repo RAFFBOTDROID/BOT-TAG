@@ -241,16 +241,17 @@ async def processar(update: Update, context: ContextTypes.DEFAULT_TYPE):
     except Exception as e:
         logging.error(f"Erro ao editar: {e}")
 
-# ================= MAIN (SAFE MODE — LOOP FIX) =================
-import asyncio
+# ================= MAIN (SAFE MODE — LOOP FIX DEFINITIVO) =================
+import threading
+import time
+import shutil
 import logging
 import os
-import shutil
 
 BACKUP_INTERVAL = 3600
 WATCHDOG_INTERVAL = 120
 
-async def backup_db():
+def backup_db():
     while True:
         try:
             if os.path.exists(DB_NAME):
@@ -258,14 +259,14 @@ async def backup_db():
                 logging.info("💾 Backup do banco criado")
         except Exception as e:
             logging.error(f"Erro no backup: {e}")
-        await asyncio.sleep(BACKUP_INTERVAL)
+        time.sleep(BACKUP_INTERVAL)
 
-async def watchdog():
+def watchdog():
     while True:
         logging.info("💓 Bot vivo (Watchdog OK)")
-        await asyncio.sleep(WATCHDOG_INTERVAL)
+        time.sleep(WATCHDOG_INTERVAL)
 
-async def run_bot():
+def main():
     init_db()
 
     app = ApplicationBuilder().token(TOKEN).build()
@@ -282,20 +283,16 @@ async def run_bot():
         )
     )
 
-    logging.info("🚀 Channel Beautify PRO ONLINE")
+    # Threads seguras (não mexem no event loop)
+    threading.Thread(target=backup_db, daemon=True).start()
+    threading.Thread(target=watchdog, daemon=True).start()
 
-    await asyncio.gather(
-        app.run_polling(),
-        watchdog(),
-        backup_db()
-    )
+    logging.info("🚀 Channel Beautify PRO ONLINE — SAFE MODE")
 
-def main():
-    try:
-        asyncio.run(run_bot())
-    except KeyboardInterrupt:
-        print("⛔ Bot desligado manualmente")
+    # RODA NATIVO SEM asyncio.run
+    app.run_polling()
 
 if __name__ == "__main__":
     main()
+
 
