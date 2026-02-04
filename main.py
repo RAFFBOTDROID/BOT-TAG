@@ -16,7 +16,10 @@ from telegram.ext import (
 )
 
 # ================= CONFIG =================
-TOKEN = ""
+import os
+
+TOKEN = os.getenv("BOT_TOKEN")
+
 DB_NAME = "bot_tags.db"
 INVISIVEL = "⠀"
 
