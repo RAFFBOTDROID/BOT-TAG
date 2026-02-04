@@ -242,26 +242,57 @@ async def processar(update: Update, context: ContextTypes.DEFAULT_TYPE):
         logging.error(f"Erro ao editar: {e}")
 
 # ================= MAIN =================
-def main():
-    init_db()
-    app = ApplicationBuilder().token(TOKEN).build()
+# ================= MAIN (ULTRA MODE) =================
+import asyncio
+import logging
+import os
+import shutil
+import time
 
-    app.add_handler(CommandHandler("start", start))
-    app.add_handler(CallbackQueryHandler(callback))
-    app.add_handler(MessageHandler(filters.TEXT & filters.ChatType.PRIVATE, receber_texto))
-    app.add_handler(
-        MessageHandler(
-            filters.ChatType.CHANNEL
-            | filters.ChatType.GROUP
-            | filters.ChatType.SUPERGROUP,
-            processar
-        )
-    )
+RESTART_DELAY = 5
+BACKUP_INTERVAL = 3600  # 1 hora
+WATCHDOG_INTERVAL = 120  # 2 minutos
 
-    print("🤖 Channel Beautify PRO rodando...")
-    app.run_polling(close_loop=False)
+async def backup_db():
+    while True:
+        try:
+            if os.path.exists(DB_NAME):
+                shutil.copy(DB_NAME, DB_NAME + ".backup")
+                logging.info("💾 Backup do banco criado")
+        except Exception as e:
+            logging.error(f"Erro no backup: {e}")
+        await asyncio.sleep(BACKUP_INTERVAL)
 
+async def watchdog():
+    while True:
+        logging.info("💓 Bot vivo (Watchdog OK)")
+        await asyncio.sleep(WATCHDOG_INTERVAL)
 
-if __name__ == "__main__":
-    main()
+async def run_bot():
+    while True:
+        try:
+            init_db()
+            app = ApplicationBuilder().token(TOKEN).build()
 
+            app.add_handler(CommandHandler("start", start))
+            app.add_handler(CallbackQueryHandler(callback))
+            app.add_handler(MessageHandler(filters.TEXT & filters.ChatType.PRIVATE, receber_texto))
+            app.add_handler(
+                MessageHandler(
+                    filters.ChatType.CHANNEL
+                    | filters.ChatType.GROUP
+                    | filters.ChatType.SUPERGROUP,
+                    processar
+                )
+            )
+
+            logging.info("🚀 Channel Beautify PRO ULTRA MODE ONLINE")
+
+            await asyncio.gather(
+                app.run_polling(),
+                watchdog(),
+                backup_db()
+            )
+
+        except Exception as e:
+            logging.error(f"🔥 BOT CAIU — Reiniciand
