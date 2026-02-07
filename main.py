@@ -263,19 +263,23 @@ def watchdog():
         time.sleep(WATCHDOG_INTERVAL)
 
 # ================= WEB SERVER (RENDER FREE FIX) =================
-from flask import Flask
+try:
+    from flask import Flask
 
-web_app = Flask(__name__)
+    web_app = Flask(__name__)
 
-@web_app.route("/")
-def home():
-    return "🤖 Channel Beautify PRO ONLINE — Render OK"
+    @web_app.route("/")
+    def home():
+        return "🤖 Channel Beautify PRO ONLINE — Render OK"
 
-def run_web():
-    port = int(os.environ.get("PORT", 10000))
-    web_app.run(host="0.0.0.0", port=port)
+    def run_web():
+        port = int(os.environ.get("PORT", 10000))
+        web_app.run(host="0.0.0.0", port=port)
 
-threading.Thread(target=run_web, daemon=True).start()
+    threading.Thread(target=run_web, daemon=True).start()
+
+except Exception as e:
+    logging.warning(f"Flask não disponível — Web server ignorado: {e}")
 
 # ================= MAIN =================
 def main():
