@@ -1,6 +1,11 @@
 # ================= CHANNEL BEAUTIFY PRO =================
 import logging
 import sqlite3
+import os
+import threading
+import time
+import shutil
+
 from telegram import (
     Update,
     InlineKeyboardButton,
@@ -16,8 +21,6 @@ from telegram.ext import (
 )
 
 # ================= CONFIG =================
-import os
-
 TOKEN = os.getenv("BOT_TOKEN")
 
 DB_NAME = "bot_tags.db"
@@ -40,16 +43,10 @@ def init_db():
             tags_inicio TEXT DEFAULT '',
             tags_fim TEXT DEFAULT '',
             botao_texto TEXT DEFAULT '',
-            botao_link TEXT DEFAULT ''
+            botao_link TEXT DEFAULT '',
+            espaco INTEGER DEFAULT 2
         )
         """)
-
-        colunas = [c[1] for c in con.execute("PRAGMA table_info(canais)")]
-
-        if "espaco" not in colunas:
-            con.execute(
-                "ALTER TABLE canais ADD COLUMN espaco INTEGER DEFAULT 2"
-            )
 
 def get_cfg(chat_id):
     with db() as con:
@@ -217,7 +214,7 @@ async def processar(update: Update, context: ContextTypes.DEFAULT_TYPE):
     tgf = cfg[5]
     bt = cfg[6]
     bl = cfg[7]
-    esp = cfg[8] if len(cfg) > 8 else 2
+    esp = cfg[8]
 
     texto_base = msg.text or msg.caption or INVISIVEL
     espaco = gerar_espaco(esp)
@@ -234,16 +231,11 @@ async def processar(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if msg.text:
             await msg.edit_text(texto_final, reply_markup=teclado)
         else:
-            if msg.caption != texto_final:
-                await msg.edit_caption(texto_final, reply_markup=teclado)
+            await msg.edit_caption(texto_final, reply_markup=teclado)
     except Exception as e:
         logging.error(f"Erro ao editar: {e}")
 
 # ================= SAFE MODE THREADS =================
-import threading
-import time
-import shutil
-
 BACKUP_INTERVAL = 3600
 WATCHDOG_INTERVAL = 120
 
@@ -252,9 +244,9 @@ def backup_db():
         try:
             if os.path.exists(DB_NAME):
                 shutil.copy(DB_NAME, DB_NAME + ".backup")
-                logging.info("💾 Backup do banco criado")
+                logging.info("💾 Backup criado")
         except Exception as e:
-            logging.error(f"Erro no backup: {e}")
+            logging.error(f"Erro backup: {e}")
         time.sleep(BACKUP_INTERVAL)
 
 def watchdog():
@@ -279,7 +271,7 @@ try:
     threading.Thread(target=run_web, daemon=True).start()
 
 except Exception as e:
-    logging.warning(f"Flask não disponível — Web server ignorado: {e}")
+    logging.warning(f"Flask indisponível — ignorado: {e}")
 
 # ================= MAIN =================
 def main():
