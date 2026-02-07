@@ -31,7 +31,6 @@ def db():
 
 def init_db():
     with db() as con:
-        # tabela base
         con.execute("""
         CREATE TABLE IF NOT EXISTS canais (
             chat_id INTEGER PRIMARY KEY,
@@ -45,7 +44,6 @@ def init_db():
         )
         """)
 
-        # migração automática (evita TODOS os erros)
         colunas = [c[1] for c in con.execute("PRAGMA table_info(canais)")]
 
         if "espaco" not in colunas:
@@ -213,7 +211,6 @@ async def processar(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if msg.reply_to_message:
         return
 
-    # leitura segura (NUNCA quebra)
     ti = cfg[2]
     tf = cfg[3]
     tgi = cfg[4]
@@ -237,16 +234,15 @@ async def processar(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if msg.text:
             await msg.edit_text(texto_final, reply_markup=teclado)
         else:
-            await msg.edit_caption(texto_final, reply_markup=teclado)
+            if msg.caption != texto_final:
+                await msg.edit_caption(texto_final, reply_markup=teclado)
     except Exception as e:
         logging.error(f"Erro ao editar: {e}")
 
-# ================= MAIN (SAFE MODE — LOOP FIX DEFINITIVO) =================
+# ================= SAFE MODE THREADS =================
 import threading
 import time
 import shutil
-import logging
-import os
 
 BACKUP_INTERVAL = 3600
 WATCHDOG_INTERVAL = 120
@@ -266,6 +262,22 @@ def watchdog():
         logging.info("💓 Bot vivo (Watchdog OK)")
         time.sleep(WATCHDOG_INTERVAL)
 
+# ================= WEB SERVER (RENDER FREE FIX) =================
+from flask import Flask
+
+web_app = Flask(__name__)
+
+@web_app.route("/")
+def home():
+    return "🤖 Channel Beautify PRO ONLINE — Render OK"
+
+def run_web():
+    port = int(os.environ.get("PORT", 10000))
+    web_app.run(host="0.0.0.0", port=port)
+
+threading.Thread(target=run_web, daemon=True).start()
+
+# ================= MAIN =================
 def main():
     init_db()
 
@@ -283,16 +295,12 @@ def main():
         )
     )
 
-    # Threads seguras (não mexem no event loop)
     threading.Thread(target=backup_db, daemon=True).start()
     threading.Thread(target=watchdog, daemon=True).start()
 
     logging.info("🚀 Channel Beautify PRO ONLINE — SAFE MODE")
 
-    # RODA NATIVO SEM asyncio.run
     app.run_polling()
 
 if __name__ == "__main__":
     main()
-
-
