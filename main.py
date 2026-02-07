@@ -275,6 +275,10 @@ except Exception as e:
 
 # ================= MAIN =================
 def main():
+    if not TOKEN:
+        logging.error("❌ BOT_TOKEN não definido!")
+        return
+
     init_db()
 
     app = ApplicationBuilder().token(TOKEN).build()
