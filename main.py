@@ -1,304 +1,169 @@
-# ================= CHANNEL BEAUTIFY PRO =================
-import logging
-import sqlite3
 import os
+import random
+import sqlite3
+import asyncio
 import threading
-import time
-import shutil
-
-from telegram import (
-    Update,
-    InlineKeyboardButton,
-    InlineKeyboardMarkup,
-)
-from telegram.ext import (
-    ApplicationBuilder,
-    CommandHandler,
-    CallbackQueryHandler,
-    MessageHandler,
-    ContextTypes,
-    filters,
-)
+import logging
+from groq import Groq
+from telegram import Update
+from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes
+from flask import Flask
 
 # ================= CONFIG =================
 TOKEN = os.getenv("BOT_TOKEN")
+GROQ_KEY = os.getenv("GROQ_API_KEY")
 
-DB_NAME = "bot_tags.db"
-INVISIVEL = "⠀"
+client = Groq(api_key=GROQ_KEY) if GROQ_KEY else None
 
 logging.basicConfig(level=logging.INFO)
 
-# ================= BANCO =================
+DB_PATH = "database.db"
+
+# ================= FRASES FALLBACK =================
+FRASES_FALLBACK = [
+    "💖 O amor é a poesia do coração.",
+    "🌹 Amar é sentir o infinito em um instante.",
+    "💞 Você é o verso mais bonito do meu dia.",
+    "✨ Onde há amor, há magia.",
+    "🥰 Amar é cuidar sem pedir nada em troca."
+]
+
+# ================= DATABASE =================
 def db():
-    return sqlite3.connect(DB_NAME)
+    return sqlite3.connect(DB_PATH)
 
 def init_db():
     with db() as con:
         con.execute("""
         CREATE TABLE IF NOT EXISTS canais (
             chat_id INTEGER PRIMARY KEY,
+            canal_nome TEXT DEFAULT '',
             ativo INTEGER DEFAULT 1,
-            texto_inicio TEXT DEFAULT '',
-            texto_fim TEXT DEFAULT '',
-            tags_inicio TEXT DEFAULT '',
-            tags_fim TEXT DEFAULT '',
-            botao_texto TEXT DEFAULT '',
-            botao_link TEXT DEFAULT '',
-            espaco INTEGER DEFAULT 2
+            personalidade TEXT DEFAULT 'romantico',
+            memoria TEXT DEFAULT '',
+            intervalo INTEGER DEFAULT 3600,
+            ia_ativa INTEGER DEFAULT 1,
+            love_mode INTEGER DEFAULT 1
         )
         """)
 
-def get_cfg(chat_id):
-    with db() as con:
-        cur = con.execute("SELECT * FROM canais WHERE chat_id=?", (chat_id,))
-        return cur.fetchone()
-
-def set_cfg(chat_id, campo, valor):
-    with db() as con:
-        con.execute(f"UPDATE canais SET {campo}=? WHERE chat_id=?", (valor, chat_id))
-
-def reset_cfg(chat_id):
-    with db() as con:
-        con.execute("""
-        UPDATE canais SET
-        texto_inicio='',
-        texto_fim='',
-        tags_inicio='',
-        tags_fim='',
-        botao_texto='',
-        botao_link='',
-        espaco=2
-        WHERE chat_id=?
-        """, (chat_id,))
+init_db()
 
 def all_canais():
     with db() as con:
-        return con.execute("SELECT chat_id FROM canais").fetchall()
+        return con.execute("SELECT chat_id, canal_nome FROM canais WHERE ativo=1").fetchall()
 
-# ================= UTIL =================
-def gerar_espaco(n):
-    return "\n" * n
-
-# ================= START =================
-async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    kb = InlineKeyboardMarkup([
-        [InlineKeyboardButton("📢 Meus Canais / Grupos", callback_data="canais")]
-    ])
-    await update.message.reply_text(
-        "🤖 **Channel Beautify PRO**\n\n"
-        "✨ Embeleza postagens automaticamente\n"
-        "📸 🎬 🎵 Texto, imagem, vídeo e música\n"
-        "🎨 Totalmente configurável pelo menu\n\n"
-        "👉 Adicione o bot como **ADMIN** no canal.",
-        reply_markup=kb,
-        parse_mode="Markdown"
-    )
-
-# ================= MENU =================
-async def callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    q = update.callback_query
-    await q.answer()
-    data = q.data
-
-    if data == "canais":
-        canais = all_canais()
-        if not canais:
-            await q.message.reply_text("❌ Nenhum canal registrado.\nPoste algo primeiro.")
-            return
-
-        kb = [
-            [InlineKeyboardButton(f"📢 {cid[0]}", callback_data=f"cfg:{cid[0]}")]
-            for cid in canais
-        ]
-        await q.message.reply_text("📢 Selecione o canal:", reply_markup=InlineKeyboardMarkup(kb))
-        return
-
-    if data.startswith("cfg:"):
-        chat_id = int(data.split(":")[1])
-        context.user_data["chat_id"] = chat_id
-
-        kb = InlineKeyboardMarkup([
-            [InlineKeyboardButton("✏ Texto início", callback_data="ti"),
-             InlineKeyboardButton("✏ Texto fim", callback_data="tf")],
-            [InlineKeyboardButton("🏷 Tags início", callback_data="tgi"),
-             InlineKeyboardButton("🏷 Tags fim", callback_data="tgf")],
-            [InlineKeyboardButton("🔘 Botão texto", callback_data="bt"),
-             InlineKeyboardButton("🔗 Botão link", callback_data="bl")],
-            [InlineKeyboardButton("📏 Espaçamento", callback_data="espaco")],
-            [InlineKeyboardButton("🔌 Ativar / Desativar", callback_data="toggle")],
-            [InlineKeyboardButton("🗑 Resetar tudo", callback_data="reset")],
-        ])
-        await q.message.reply_text(
-            f"⚙️ Configuração do canal:\n`{chat_id}`",
-            reply_markup=kb,
-            parse_mode="Markdown"
-        )
-        return
-
-    if data in {"ti", "tf", "tgi", "tgf", "bt", "bl"}:
-        context.user_data["edit"] = data
-        await q.message.reply_text("✍️ Envie o texto agora:")
-        return
-
-    if data == "espaco":
-        kb = InlineKeyboardMarkup([
-            [InlineKeyboardButton("▫ Compacto", callback_data="esp:1")],
-            [InlineKeyboardButton("▫ Médio", callback_data="esp:2")],
-            [InlineKeyboardButton("▫ Grande", callback_data="esp:3")],
-        ])
-        await q.message.reply_text("📏 Escolha o espaçamento:", reply_markup=kb)
-        return
-
-    if data.startswith("esp:"):
-        chat_id = context.user_data["chat_id"]
-        nivel = int(data.split(":")[1])
-        set_cfg(chat_id, "espaco", nivel)
-        await q.message.reply_text("✅ Espaçamento atualizado!")
-        return
-
-    if data == "toggle":
-        chat_id = context.user_data["chat_id"]
-        cfg = get_cfg(chat_id)
-        novo = 0 if cfg[1] == 1 else 1
-        set_cfg(chat_id, "ativo", novo)
-        await q.message.reply_text("✅ Ativado" if novo else "⛔ Desativado")
-        return
-
-    if data == "reset":
-        chat_id = context.user_data["chat_id"]
-        reset_cfg(chat_id)
-        await q.message.reply_text("♻️ Configurações resetadas!")
-        return
-
-# ================= RECEBER TEXTO =================
-async def receber_texto(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if "edit" not in context.user_data:
-        return
-
-    chat_id = context.user_data["chat_id"]
-    campo = context.user_data.pop("edit")
-
-    mapa = {
-        "ti": "texto_inicio",
-        "tf": "texto_fim",
-        "tgi": "tags_inicio",
-        "tgf": "tags_fim",
-        "bt": "botao_texto",
-        "bl": "botao_link",
-    }
-
-    set_cfg(chat_id, mapa[campo], update.message.text)
-    await update.message.reply_text("✅ Salvo com sucesso!")
-
-# ================= PROCESSAR POSTS =================
-async def processar(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    msg = update.channel_post or update.message
-    if not msg or not msg.chat:
-        return
-
-    chat_id = msg.chat.id
-
+def get_cfg(cid):
     with db() as con:
-        con.execute("INSERT OR IGNORE INTO canais (chat_id) VALUES (?)", (chat_id,))
+        return con.execute("SELECT * FROM canais WHERE chat_id=?", (cid,)).fetchone()
 
-    cfg = get_cfg(chat_id)
-    if not cfg or cfg[1] == 0:
-        return
+def salvar_canal(cid, nome):
+    with db() as con:
+        con.execute("""
+        INSERT OR IGNORE INTO canais (chat_id, canal_nome)
+        VALUES (?, ?)
+        """, (cid, nome))
 
-    if msg.reply_to_message:
-        return
+# ================= LOVE MODE IA =================
+def gerar_post_romantico(personalidade="romantico", memoria=""):
+    prompt = f"""
+    Você escreve posts para um canal de romance, amor, paixão e carinho.
 
-    ti = cfg[2]
-    tf = cfg[3]
-    tgi = cfg[4]
-    tgf = cfg[5]
-    bt = cfg[6]
-    bl = cfg[7]
-    esp = cfg[8]
+    Personalidade do canal: {personalidade}
+    Memória emocional do canal: {memoria}
 
-    texto_base = msg.text or msg.caption or INVISIVEL
-    espaco = gerar_espaco(esp)
+    Gere um post completo com:
+    - Texto romântico intenso
+    - Emojis apaixonados
+    - Hashtags no final
+    Tom: profundo, sentimental, viral, amoroso.
+    """
 
-    inicio = f"{ti}{espaco}{tgi}{espaco}" if ti or tgi else ""
-    fim = f"{espaco}{tgf}{espaco}{tf}" if tf or tgf else ""
-    texto_final = inicio + texto_base + fim
-
-    teclado = None
-    if bt and bl:
-        teclado = InlineKeyboardMarkup([[InlineKeyboardButton(bt, url=bl)]])
-
-    try:
-        if msg.text:
-            await msg.edit_text(texto_final, reply_markup=teclado)
-        else:
-            await msg.edit_caption(texto_final, reply_markup=teclado)
-    except Exception as e:
-        logging.error(f"Erro ao editar: {e}")
-
-# ================= SAFE MODE THREADS =================
-BACKUP_INTERVAL = 3600
-WATCHDOG_INTERVAL = 120
-
-def backup_db():
-    while True:
+    if client:
         try:
-            if os.path.exists(DB_NAME):
-                shutil.copy(DB_NAME, DB_NAME + ".backup")
-                logging.info("💾 Backup criado")
+            resp = client.chat.completions.create(
+                model="llama3-8b-8192",
+                messages=[
+                    {"role": "system", "content": "Você é uma IA especialista em amor, romance, paixão e emoção profunda."},
+                    {"role": "user", "content": prompt}
+                ],
+                max_tokens=200,
+                temperature=0.95
+            )
+            return resp.choices[0].message.content.strip()
         except Exception as e:
-            logging.error(f"Erro backup: {e}")
-        time.sleep(BACKUP_INTERVAL)
+            logging.error(f"Erro IA: {e}")
 
-def watchdog():
+    return random.choice(FRASES_FALLBACK)
+
+# ================= AUTPOST LOOP =================
+async def autopost_loop(app):
+    await app.bot.initialize()
+    logging.info("💖 Love Mode Autopost iniciado")
+
     while True:
-        logging.info("💓 Bot vivo (Watchdog OK)")
-        time.sleep(WATCHDOG_INTERVAL)
+        canais = all_canais()
 
-# ================= WEB SERVER (RENDER FREE FIX) =================
-try:
-    from flask import Flask
+        for cid, nome in canais:
+            cfg = get_cfg(cid)
+            if not cfg:
+                continue
 
-    web_app = Flask(__name__)
+            ativo = cfg[2]
+            personalidade = cfg[3]
+            memoria = cfg[4]
+            intervalo = cfg[5]
+            ia_on = cfg[6]
 
-    @web_app.route("/")
-    def home():
-        return "🤖 Channel Beautify PRO ONLINE — Render OK"
+            if ativo == 0:
+                continue
 
-    def run_web():
-        port = int(os.environ.get("PORT", 10000))
-        web_app.run(host="0.0.0.0", port=port)
+            if ia_on:
+                texto = gerar_post_romantico(personalidade, memoria)
+            else:
+                texto = random.choice(FRASES_FALLBACK)
 
-    threading.Thread(target=run_web, daemon=True).start()
+            try:
+                await app.bot.send_message(cid, texto)
+                logging.info(f"💌 Autopost enviado → {nome}")
+            except Exception as e:
+                logging.error(f"Erro autopost {cid}: {e}")
 
-except Exception as e:
-    logging.warning(f"Flask indisponível — ignorado: {e}")
+        await asyncio.sleep(300)
+
+# ================= TELEGRAM COMMANDS =================
+async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    chat = update.effective_chat
+
+    if chat.type == "channel":
+        salvar_canal(chat.id, chat.title or "Canal sem nome")
+        await update.message.reply_text("💖 Canal registrado no Love Mode!")
+    else:
+        await update.message.reply_text("💌 Me adicione a um CANAL para ativar Love Mode.")
+
+# ================= FLASK DASHBOARD =================
+web = Flask(__name__)
+
+@web.route("/")
+def dashboard():
+    canais = all_canais()
+    html = "<h1>💖 Love Mode Dashboard</h1>"
+    for cid, nome in canais:
+        html += f"<p>📢 {nome} — {cid}</p>"
+    return html
+
+def run_web():
+    web.run(host="0.0.0.0", port=8080)
 
 # ================= MAIN =================
 def main():
-    if not TOKEN:
-        logging.error("❌ BOT_TOKEN não definido!")
-        return
-
-    init_db()
-
+    print("🚀 LOVE MODE BOT INICIANDO...")
     app = ApplicationBuilder().token(TOKEN).build()
 
     app.add_handler(CommandHandler("start", start))
-    app.add_handler(CallbackQueryHandler(callback))
-    app.add_handler(MessageHandler(filters.TEXT & filters.ChatType.PRIVATE, receber_texto))
-    app.add_handler(
-        MessageHandler(
-            filters.ChatType.CHANNEL
-            | filters.ChatType.GROUP
-            | filters.ChatType.SUPERGROUP,
-            processar
-        )
-    )
 
-    threading.Thread(target=backup_db, daemon=True).start()
-    threading.Thread(target=watchdog, daemon=True).start()
-
-    logging.info("🚀 Channel Beautify PRO ONLINE — SAFE MODE")
+    threading.Thread(target=run_web, daemon=True).start()
+    threading.Thread(target=lambda: asyncio.run(autopost_loop(app)), daemon=True).start()
 
     app.run_polling()
 
